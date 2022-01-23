@@ -1,6 +1,57 @@
-import { getMouseEventOptions } from '@testing-library/user-event/dist/utils'
 import { TurnOrder, INVALID_MOVE } from 'boardgame.io/core'
-import { PluginPlayer } from 'boardgame.io/plugins'
+import { GiCrystalize } from 'react-icons/gi'
+
+const enumerate = (G, ctx)=> {
+    const moves = []
+
+    const hand = G.hands[ctx.currentPlayer]
+    const phase = ctx.phase
+
+    if(phase=='play'){
+        hand.forEach(card=> {
+            if(G.leadingSuit!==null){
+                if(card.suit === G.leadingSuit){
+                    
+                        moves.push({
+                            move: 'playCard',
+                            args: [{
+                                ...card,
+                                playerID: ctx.currentPlayer
+                            }]
+                        })
+                    
+                }
+            }else{
+                if(card.suit==="spades"&&G.spadesBroken){
+                    moves.push({
+                        move: 'playCard',
+                        args: [{
+                            ...card,
+                            playerID: ctx.currentPlayer
+                        }]
+                    })
+                }else{
+                    if(card.suit!=='spades'){
+                moves.push({
+                    move: 'playCard',
+                    args: [{
+                        ...card,
+                        playerID: ctx.currentPlayer
+                    }]
+                })
+            }
+            }
+        }
+
+            
+        })
+    }else if(phase=='bid'){
+        [0,1,2,3,4,5,6,7,8,9,10,11,12,13].forEach(n=> moves.push({move: 'bid', args: [n]}))
+    }else if(phase=='assignWinningBook'){
+        
+    }
+    return moves
+}
 
 const HEARTS = 'hearts'
 const CLUBS = 'clubs'
@@ -30,12 +81,35 @@ const cardValues = [
     'A', // 12
 ]
 
-const playerSetup = (playerID)=>({
-    hand: [],
-    books: [],
-})
+const zeroCondition = (bid, bookCount) => bookCount === 0
 
-const getCardValue = value => cardValues.findIndex(e=> e==value)
+const nonZeroCondition = (bid, bookCount) => bookCount >= bid
+
+const scoreConditions = [
+    zeroCondition,
+    nonZeroCondition,
+]
+
+const calculateScore = ({bid, bookCount}) =>{
+    let baseScore = bid !== 0 ? (bid*10) : 100
+    let score = 0
+    let bags = 0
+
+    let scoreCondition = scoreConditions[bid === 0 ? 0 : 1]
+
+    const passedCondition = scoreCondition(bid, bookCount)
+
+    if(passedCondition){
+        score += baseScore
+        bags += bookCount - bid
+        score += bags
+    }else{
+        score -= baseScore
+    }
+    return {score, bags}
+}
+
+const getCardValue = value => cardValues.findIndex(e=> e===value)
 
 const findWinningPlayer = book =>{
     console.log(book)
@@ -50,8 +124,8 @@ const findWinningPlayer = book =>{
             hiCard = cardValue
             winningPlayer = player
         }else{            
-            if(card.suit!=hiSuit){
-                if(card.suit==SPADES){
+            if(card.suit!==hiSuit){
+                if(card.suit===SPADES){
                     hiCard = cardValue
                     hiSuit = card.suit
                     winningPlayer = player
@@ -73,11 +147,11 @@ const findWinningPlayer = book =>{
 export const contains = ({suit: currentSuit, value: currentValue}, lst) =>{
     let rtn = false
     lst.forEach(({suit, value})=>{
-        if(suit==currentSuit){
+        if(suit===currentSuit){
             if(value == null){
                 return true
             }
-            if(value==currentValue){
+            if(value===currentValue){
                 rtn = true
             }
         }
@@ -89,8 +163,8 @@ const compareSuitAndVal = (a, b) => {
     // if suits dont match
     if(a.suit !== b.suit){
         // sort by suit index
-        const aSuitIndex = SUITS.findIndex(e=> e == a.suit)
-        const bSuitIndex = SUITS.findIndex(e=> b.suit == e)
+        const aSuitIndex = SUITS.findIndex(e=> e === a.suit)
+        const bSuitIndex = SUITS.findIndex(e=> b.suit === e)
 
         if(aSuitIndex < bSuitIndex){
             return -1
@@ -98,8 +172,8 @@ const compareSuitAndVal = (a, b) => {
             return 1
         }
     }else{
-        const aIndex = cardValues.findIndex(e=> e==a.value)
-        const bIndex = cardValues.findIndex(e=> e==b.value)
+        const aIndex = cardValues.findIndex(e=> e===a.value)
+        const bIndex = cardValues.findIndex(e=> e===b.value)
         if(aIndex < bIndex){
             return -1
         }else{
@@ -137,7 +211,7 @@ class Deck
         return card
     }
     get isEmpty(){
-        return this.cards.length == 0
+        return this.cards.length === 0
     }
     getDeck(){
         return this.cards
@@ -153,28 +227,28 @@ const assignWinningBook =  (G, ctx) =>{
     currentBook.forEach(({player, card})=>{
         winningBook.push(card)                            
     })
-    G.collectedBooks[winningPlayer].push(winningBook)
+    const collectedBooks = G.collectedBooks[winningPlayer] || []
+    collectedBooks.push(winningBook)
+    G.collectedBooks[winningPlayer] = collectedBooks
+    G.winningBook = winningBook
     G.winningPlayer = winningPlayer                                                
     ctx.events.endPhase()
-    // ctx.events.endTurn({next: winningPlayer})
+}
+
+const displayWinningBook = (G, ctx) =>{
+    ctx.events.endPhase({next: 'play'})
 }
 
 const isSameCard = (cardA, cardB)=>{
     let rtn = false
-    if(cardA.value==cardB.value){
-        if(cardA.suit==cardB.suit){
+    if(cardA.value===cardB.value){
+        if(cardA.suit===cardB.suit){
             rtn = true
         }
     }
     return rtn
 }
 
-const getNext = num =>{
-    if(num==3){
-        return '0'
-    }
-    return `${parseInt(num) + 1}`
-}
 
 const dealCard = (G, ctx)=>{
     const hand = G.hands[ctx.currentPlayer] || []
@@ -185,177 +259,186 @@ const dealCard = (G, ctx)=>{
     return G
 }
 
-const getPlayOrder = first =>{
-    const second = getNext(first)
-    const third = getNext(second)
-    const last = getNext(third)
-    const order = [
-        String(first),
-        second,
-        third,
-        last,
-    ]
-    return order
-}
 
 const MyPlayOrder = {
-    playOrder: (G, ctx) => G.turn_order,
+    // playOrder: (G, ctx) => G.turn_order,
     first: (G, ctx)=> {
-        console.log(`CALLING FIRST in ${ctx.phase}`)
-        console.log(`${typeof ctx.playOrder[0]}`)
         const lastWinner = G.lastWinner
-        const lastWinnerIndex = ctx.playOrder.indexOf(`${lastWinner}`)
-        console.log(`lastwinner: ${lastWinner} - lastWinnerIndex: ${lastWinnerIndex}`)
         const afterDealer = (G.dealer+1)%ctx.numPlayers
         const afterDealerIndex = ctx.playOrder.indexOf(`${afterDealer}`)
-        console.log(`afterDealer: ${afterDealer} - afterDealerIndex: ${afterDealerIndex}`)
-        return parseInt(G.lastWinner ? ctx.playOrder.indexOf(`${G.lastWinner}`) : ctx.playOrder.indexOf(`${(G.dealer+1)%ctx.numPlayers}`))
+        return parseInt(
+            lastWinner != null ? 
+            lastWinner : 
+            afterDealerIndex
+        )
     },
     next: TurnOrder.DEFAULT.next,
 }
 
+const bid = (G, ctx, bid)=>{
+    
+    if(bid<0){
+        return INVALID_MOVE
+    }
+    G.bids[ctx.currentPlayer] = bid
+    return G
+}
+
+const setupG = (ctx, G, changeDealer = false, round = 1)=>{
+    let deck = new Deck()
+
+
+    for(let i=0; i<4;i++){            
+        const suit = SUITS[i]
+
+        for(let x=0;x<cardValues.length;x++){
+            deck.addCard(
+                new Card(cardValues[x], suit).getCard()
+            )    
+        }   
+    }
+
+    const getNextDealer = dealer => dealer < 3 ? [0,1,2,3][dealer+1] : 0
+
+    const books = Array(13).fill([])
+    
+    if(!G.stats){
+        G.stats = {}
+    }
+    
+    return ({
+        ...G,
+        round,    
+        deck: ctx.random.Shuffle(deck.getDeck()), 
+        books, 
+        turn: 0,         
+        turnIndex: 0,
+        bids: {}, 
+        hands: {},        
+        dealer: changeDealer ? getNextDealer(G.dealer) : G.dealer,
+        winningPlayer: null,
+        spadesBroken: false,
+        winningBook: {},
+        collectedBooks: {
+            0: [],
+            1: [],
+            2: [],
+            3: [],
+        }
+    })
+}
+
+const initialSetup = ctx =>{
+    const initialOrder = ctx.random.Shuffle([0,1,2,3])
+    const dealer = initialOrder[3]    
+
+    const G = {
+        scores: [0,0,0,0],
+        dealer,
+        lastWinner: null,
+        
+    }
+    return setupG(ctx, G)
+}
+
 export const Spades = {
 
-    setup:(ctx)=>{
-        let deck = new Deck
-
-
-        for(let i=0; i<4;i++){            
-            const suit = SUITS[i]
-
-            for(let x=0;x<cardValues.length;x++){
-                deck.addCard(
-                    new Card(cardValues[x], suit).getCard()
-                )    
-            }   
-        }
-
-        const books = Array(13).fill([])
-
-        const initialOrder = ctx.random.Shuffle([0,1,2,3])
-        const dealer = initialOrder[3]
-        const initialFirst = dealer < 3 ? [0,1,2,3][dealer+1] : 0
-        const order = getPlayOrder(initialFirst)
-        
-        return ({
-            deck: ctx.random.Shuffle(deck.getDeck()), 
-            books, 
-            turn: 0, 
-            turnIndex: 0,
-            bids: {}, 
-            hands: {},
-            turn_order: order,
-            dealer,
-            winningPlayer: null,
-            lastWinner: null,
-            spadesBroken: false,
-            collectedBooks: {
-
-                0: [],
-                1: [],
-                2: [],
-                3: [],
-            }
-        })
+    ai: {
+        enumerate
     },
+
+    name: 'Spades',
+
+    setup: initialSetup,
+
     turn: {
         order: MyPlayOrder,
     },
-    // turn:{
-    //     // onEnd:(G, ctx)=>G, 
-    //     order:{
-    //         first: (G, ctx)=> ctx.playOrder[G.winningPlayer] || 0,
-    //         next: (G, ctx)=> ctx.playOrder[G.winningPlayer] || (ctx.playOrderPos+1) % ctx.numPlayers,
-    //         playOrder: (G, ctx)=> {                
-    //             const initialOrder = ctx.random.Shuffle([0,1,2,3])
-    //             const dealer = initialOrder[3]
-    //             const initialFirst = dealer < 3 ? [0,1,2,3][dealer+1] : 0
-    //             return getPlayOrder(initialFirst)
-    //         }
-    //     },
-    // },
-
+    playerView:(G, ctx, playerID) =>{
+        return {
+            ...G,
+            hand: G.hands[playerID],
+            hands: {
+                [playerID]: G.hands[playerID]
+            }
+        }      
+    },
     phases : {
         deal: {
             turn: {
-                order: TurnOrder.CUSTOM_FROM('turn_order'),
+                order:  MyPlayOrder,
                 maxMoves: 1,
                 onBegin: (G, ctx)=> {
                     dealCard(G, ctx)
                     ctx.events.endTurn()
                     return G
+                },
+                onEnd: (G, ctx)=>{
+                    if(G.hands[ctx.currentPlayer].length===13){
+                        G.hands[ctx.currentPlayer].sort(compareSuitAndVal)      
+                    }
                 }
             },
-            moves: {
-                dealCard
+            moves: {           
             },
             
             start: true,
             next: 'bid',
-            endIf: (G, ctx)=> G.deck.length == 0,
-            onEnd: (G, ctx)=>{
-                Object.keys(
-                    G.hands
-                ).forEach(currHandIndex=>{
-                    // const currentHand = G.hands[currHandIndex]
-                    G.hands[currHandIndex].sort(compareSuitAndVal) //= sortBySuit(currentHand)                    
-                })
-                return G
-            }
+            endIf: (G, ctx)=> G.deck.length === 0,
         },
         bid: {
             moves: {
-                bid: (G, ctx, bid)=>{
-                    if(bid<0){
-                        return INVALID_MOVE
-                    }
-                    G.bids[ctx.currentPlayer] = bid
-                    return G
-                }
+                bid
             },
             turn: {
+
                 order: MyPlayOrder,
                 maxMoves: 1,
             },
             next: 'play',
-            endIf: (G, ctx)=> Object.keys(G.bids).length == 4,
-            
+            endIf: (G, ctx)=> Object.keys(G.bids).length === 4,            
         },
         play: {
             moves: {
-              playCard: (G, ctx, card)=>{
-                    ctx.log.setMetadata(`player: ${ctx.currentPlayer}`)
+              playCard: {                
+                  move: (G, ctx, card)=>{
+                    ctx.log.setMetadata(`player: ${ctx.currentPlayer} ${card.playerID}`)
                     const currentTurn = parseInt(
                         G.turnCount/4
                     )
-                    const hand = G.hands[ctx.currentPlayer].filter(curr=>!isSameCard(curr, card))
-                    const book = G.books[G.turnIndex]
-
-                    if(G.leadingSuit!==null){
-                        if(card.suit != G.leadingSuit){
-                            if(contains({suit: G.leadingSuit}, hand)){
-                                return INVALID_MOVE
+                    let hand = G.hands[ctx.currentPlayer]
+                    if(hand){
+                        hand = hand.filter(curr=>!isSameCard(curr, card))
+                                       
+                        if(G.leadingSuit!==null){
+                            if(card.suit !== G.leadingSuit){
+                                if(contains({suit: G.leadingSuit}, hand)){
+                                    return INVALID_MOVE
+                                }
                             }
+                        }else{
+                            G.leadingSuit = card.suit 
                         }
-                    }else{
-                        G.leadingSuit = card.suit 
-                    }
-                    if(card.suit=="spades"&&!G.spadesBroken){
-                        G.spadesBroken = true
-                    }
-                    book.push(
-                        {
-                            player: ctx.currentPlayer, 
-                            card
+                        if(card.suit==="spades"&&!G.spadesBroken){
+                            G.spadesBroken = true
                         }
-                    )
+                    }
+                    if(ctx.currentPlayer === card.playerID){
+                        const book = G.books[G.turnIndex]
+                        book.push(
+                            {
+                                player: ctx.currentPlayer, 
+                                card
+                            }
+                        )
+                        G.books[currentTurn] = book
+                        G.hands[ctx.currentPlayer] = hand
+                    }
 
-
-                    G.books[currentTurn] = book
-                    G.hands[ctx.currentPlayer] = hand
-
+                    ctx.events.endTurn()
                     return G
                 }
+              }
             },
             onBegin: (G, ctx)=> {
                 G.turnCount = 0
@@ -364,31 +447,30 @@ export const Spades = {
             },
             turn: {
                 order: MyPlayOrder,
-                maxMoves: 1,
+                //maxMoves: 1,
                 onMove: (G, ctx)=>{
                     G.turnCount += 1
                     G.currentTurn = parseInt(
                         G.turnCount/4
                     )
-                    if(G.currentTurn && G.currentTurn == G.turnCount/4){
-                        ctx.events.endPhase({next: 'assignWinningBook'})                        
-                    }
+
                     return G
                 },
-
-
+                onEnd: (G, ctx)=>{
+                    if(G.currentTurn && G.currentTurn === G.turnCount/4){
+                        ctx.events.endPhase({next: 'assignWinningBook'})                        
+                    }
+                }
             },
-            next: 'assignWinningBook'
+            next: (G, ctx)=>{
+                if(G.books.every(book=> book.length===4)){
+                    return 'showRoundWinner'
+                }
+                return 'assignWinningBook'
+            }
         },
         assignWinningBook:{
-            onBegin:(G, ctx)=> assignWinningBook(G, ctx),
-            //endIf: (G, ctx)=> G.winningPlayer !== null ? ({next: G.winningPlayer}) : false,
-            onEnd: (G, ctx)=> ({
-                ...G,
-                turnIndex: G.turnIndex+1,
-                winningPlayer: null, 
-                lastWinner: G.winningPlayer, 
-            }),
+            onBegin:(G, ctx)=> assignWinningBook(G, ctx),            
             turn:{
                 order: TurnOrder.CONTINUE,
                 maxMoves: 1,
@@ -396,10 +478,71 @@ export const Spades = {
             moves: {
                 assignWinningBook,
             },
+            next: 'displayWinningBook'
+        },
+        displayWinningBook: {
+            onBegin: (G, ctx)=> {
+                setTimeout(()=> ctx.events.endPhase({next: 'play'}), 5000)
+            },
+            turn:{
+                order: TurnOrder.CONTINUE,
+                maxMoves: 1,
+            },
+            onEnd: (G, ctx)=> ({
+                ...G,
+                turnIndex: G.turnIndex+1,
+                winningPlayer: null, 
+                lastWinner: G.winningPlayer, 
+            }),
+            moves: {
+              // displayWinningBook
+            },
             next: 'play'
+        },
+        showRoundWinner:{
+            moves: {},
+            onBegin: (G, ctx)=>{
+                let highestScore = 0
+                let winningPlayer = null
+                const scores = [...G.scores]
+                const stats = {...G.stats}
+                const roundStats = {}
+                Object.keys(G.bids).forEach(playerID=>{
+                    const bid = G.bids[playerID]
+                    const bookCount = G.collectedBooks[playerID].length
+
+                    const currentScore = scores[playerID] || 0
+
+                    const {score, bags} = calculateScore({bid, bookCount})
+
+                    const latestScore = score + currentScore
+                    scores[playerID] = latestScore
+                    
+                    roundStats[playerID] = {
+                        bid,
+                        bookCount,
+                        bags,
+                    }
+                    if(latestScore>highestScore){
+                        highestScore = latestScore
+                        winningPlayer = playerID
+                    }
+                })
+                stats[G.round] = roundStats
+                G.scores = scores       
+                G.stats = stats
+                if(highestScore>=150){
+                    ctx.events.endGame({scores, winner: winningPlayer, score: highestScore})
+                }else{
+                    ctx.events.endPhase()
+                }
+            },
+            onEnd: (G, ctx)=>{
+                return setupG(ctx, G, true, G.round + 1)
+            },
+            next: 'deal'
         }
     },
-    endIf: (G, ctx)=> G.books.every(book=> book.length),
     minPlayers: 4,
     maxPlayers: 4,    
 
