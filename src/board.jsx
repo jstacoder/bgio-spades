@@ -411,8 +411,12 @@ export const Board = ({ G, ctx, moves, playerID = '0', isActive, events, ...prop
                 marginTop: '0%'
             }}
         >
-            {bidArray.map(bid=>(
-                    <MyBox bid={moves.bid} value={bid}/>
+            {bidArray.map((bid, idx)=>(
+                    <MyBox 
+                        key={`${playerID}-${bid}-${idx}`} 
+                        bid={moves.bid} 
+                        value={bid}
+                    />
             ))}
         </Box>
 
