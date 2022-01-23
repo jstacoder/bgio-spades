@@ -6,4 +6,4 @@ const server = Server({
     origins: [Origins.LOCALHOST]
 })
 
-server.run(5555)
+server.run(5656)
